@@ -383,10 +383,10 @@ int vc_rgb_negative(IVC *srcdst) {
 }
 
 int vc_rgb_to_gray(IVC *src, IVC *dst) {
-    unsigned char *datasrc = (unsigned char *)src->data;
+    unsigned char *datasrc = (unsigned char *) src->data;
     int bytesperline = src->width * src->channels;
     int channels = src->channels;
-    unsigned char *datadst = (unsigned char *)dst->data;
+    unsigned char *datadst = (unsigned char *) dst->data;
     int bytesperline_dst = dst->width * dst->channels;
     int channels_dst = dst->channels;
     int width = src->width;
@@ -401,18 +401,220 @@ int vc_rgb_to_gray(IVC *src, IVC *dst) {
     if ((src->channels != 3) || (dst->channels != 1)) return 0;
     if (channels != 3) return 0;
 
-    for (y = 0; y<height; y++)
-    {
-        for (x = 0; x<width; x++)
-        {
+    for (y = 0; y < height; y++) {
+        for (x = 0; x < width; x++) {
             pos_src = y * bytesperline + x * channels;
             pos_dst = y * bytesperline_dst + x * channels_dst;
 
-            rf = (float)datasrc[pos_src];
-            gf = (float)datasrc[pos_src + 1];
-            bf = (float)datasrc[pos_src + 2];
+            rf = (float) datasrc[pos_src];
+            gf = (float) datasrc[pos_src + 1];
+            bf = (float) datasrc[pos_src + 2];
 
-            datadst[pos_dst] = (unsigned char)((rf * 0.299f) + (gf * 0.587f) + (bf * 0.114f));
+            datadst[pos_dst] = (unsigned char) ((rf * 0.299f) + (gf * 0.587f) + (bf * 0.114f));
+        }
+    }
+    return 1;
+}
+
+int vc_rgb_get_red_gray(IVC *srcdst) {
+    unsigned char *data = (unsigned char *) srcdst->data;
+    int width = srcdst->width;
+    int height = srcdst->height;
+    int bytesperline = srcdst->width * srcdst->channels;
+    int channels = srcdst->channels;
+    int x, y;
+    long int pos;
+
+    // Verificação de Erros
+    if ((srcdst->width <= 0) || (srcdst->height <= 0) || (srcdst->data == NULL)) return 0;
+    if (channels != 3) return 0;
+
+    // Extrai a componente Red
+    for (y = 0; y < height; y++) {
+        for (x = 0; x < width; x++) {
+            pos = y * bytesperline + x * channels;
+
+            data[pos + 1] = data[pos]; // Green
+            data[pos + 2] = data[pos]; // Blue
+        }
+    }
+    return 1;
+}
+
+
+#define MAX(r, g, b) (r > b? (r > g? r:g): (b>g?b:g))
+#define MIN(r, g, b) (r < b? (r < g? r:g): (b<g?b:g))
+
+int vc_rgb_to_hsv(IVC *src, IVC *dst) {
+    //Imgem que entra na função
+    unsigned char *data_src = (unsigned char *) src->data;
+    int bytesperline_src = src->width * src->channels;
+    int channels_src = src->channels;
+    int width = src->width;
+    int height = src->height;
+    //Imagem que sai da função
+    unsigned char *data_dst = (unsigned char *) dst->data;
+    int bytesperline_dst = dst->width * dst->channels;
+    int channels_dst = dst->channels;
+
+    int x, y;
+    long int pos_src, pos_dst;
+    float r, g, b, maximo, saturacao, hue, minimo;
+
+    //verifica se a imagem e valida
+    if ((src->width <= 0) || (src->height <= 0) || (src->data == NULL)) return 0;
+    //verifica tamanho da imagem
+    if ((src->width != dst->width) || (src->height != dst->height)) return 0;
+    //verifica os canais
+    if ((src->channels != 3) || (dst->channels != 3)) return 0;
+
+
+    for (y = 0; y < height; y++) {
+        for (x = 0; x < width; x++) {
+            pos_src = y * bytesperline_src + x * channels_src;
+            pos_dst = y * bytesperline_dst + x * channels_dst;
+            r = (float) data_src[pos_src];
+            g = (float) data_src[pos_src + 1];
+            b = (float) data_src[pos_src + 2];
+
+            maximo = MAX(r, g, b);
+            minimo = MIN(r, g, b);
+
+
+            if (maximo != 0 && maximo > minimo) {
+                saturacao = (float) (maximo - minimo) * 255 / maximo;
+
+                if (maximo == r && g >= b) {
+                    hue = 60 * (g - b) / (maximo - minimo);
+                }
+                if (maximo == r && b > g) {
+                    hue = 360 + 60 * (g - b) / (maximo - minimo);
+                }
+                if (maximo == g) {
+                    hue = 120 + 60 * (b - r) / (maximo - minimo);
+                }
+                if (maximo == b) {
+                    hue = 240 + 60 * (r - g) / (maximo - minimo);
+                }
+            } else {
+                saturacao = 0;
+                hue = 0;
+            }
+
+            data_dst[pos_dst + 2] = (unsigned char) (maximo);
+            data_dst[pos_dst + 1] = (unsigned char) (saturacao);
+            data_dst[pos_dst] = (unsigned char) (hue);
+        }
+    }
+    return 1;
+}
+
+int vc_hsv_segmentation(IVC *src, IVC *dst, float hmin, float hmax, float smin, float smax, float vmin, float vmax) {
+    unsigned char *datasrc = (unsigned char *) src->data;
+    int bytesperline_src = src->width * src->channels;
+    int channels_src = src->channels;
+    int width = src->width;
+    int height = src->height;
+
+    unsigned char *datadst = (unsigned char *) dst->data;
+    int bytesperline_dst = dst->width * dst->channels;
+    int channels_dst = dst->channels;
+
+    int x, y;
+    long int pos_src, pos_dst;
+    float h, s, v;
+
+    //verifica se a imagem e valida
+    if ((src->width <= 0) || (src->height <= 0) || (src->data == NULL)) return 0;
+    //verifica tamanho da imagem
+    if ((src->width != dst->width) || (src->height != dst->height)) return 0;
+    ////verifica os canais
+    //if ((src->channels != 3) || (dst->channels = 1)) return 0;
+
+
+    hmin = ((float) hmin) / 360 * 255;
+    hmax = ((float) hmax) / 360 * 255;
+
+    smin = ((float) smin) / 100 * 255;
+    smax = ((float) smax) / 100 * 255;
+
+    vmin = ((float) vmin) / 100 * 255;
+    vmax = ((float) vmax) / 100 * 255;
+
+    for (y = 0; y < height; y++) {
+        for (x = 0; x < width; x++) {
+
+            pos_src = y * bytesperline_src + x * channels_src;
+            pos_dst = y * bytesperline_dst + x * channels_dst;
+
+            h = (float) datasrc[pos_src];
+            s = (float) datasrc[pos_src + 1];
+            v = (float) datasrc[pos_src + 2];
+
+
+            if (hmin <= h && h <= hmax && smin <= s && s <= smax && vmin <= v && v <= vmax) {
+                datadst[pos_dst] = 0;
+            } else {
+                datadst[pos_dst] = 255;
+            }
+        }
+
+    }
+    return 1;
+}
+
+int vc_scale_gray_to_rgb(IVC *src, IVC *dst) {
+    //Imgem que entra na função
+    unsigned char *data_src = (unsigned char *) src->data;
+    int bytesperline_src = src->width * src->channels;
+    int channels_src = src->channels;
+    int width = src->width;
+    int height = src->height;
+
+    //Imagem que sai da função
+    unsigned char *data_dst = (unsigned char *) dst->data;
+    int bytesperline_dst = dst->width * dst->channels;
+    int channels_dst = dst->channels;
+
+    int x, y;
+    long int pos_src, pos_dst;
+
+    //verifica se a imagem e valida
+    if ((src->width <= 0) || (src->height <= 0) || (src->data == NULL)) return 0;
+    //verifica tamanho da imagem
+    if ((src->width != dst->width) || (src->height != dst->height)) return 0;
+    //verifica os canais
+    if ((src->channels != 1) || (dst->channels != 3)) return 0;
+
+    for (y = 0; y < height; y++) {
+        for (x = 0; x < width; x++) {
+            pos_src = y * bytesperline_src + x * channels_src;
+            pos_dst = y * bytesperline_dst + x * channels_dst;
+
+            int value = data_src[pos_src];
+
+            if (value >= 0 && value < 64) {
+                data_dst[pos_dst] = 0;
+                data_dst[pos_dst + 1] = value * 4;
+                data_dst[pos_dst + 2] = 255;
+            } else {
+                if (value >= 64 && value < 128) {
+                    data_dst[pos_dst] = 0;
+                    data_dst[pos_dst + 1] = 255;
+                    data_dst[pos_dst + 2] = 255 - (value - 64) * 4;
+                } else {
+                    if (value >= 128 && value < 192) {
+                        data_dst[pos_dst] = (value - 128) * 4;
+                        data_dst[pos_dst + 1] = 255;
+                        data_dst[pos_dst + 2] = 0;
+                    } else {
+                        // if (value >= 192 && value <= 255)
+                        data_dst[pos_dst] = 255;
+                        data_dst[pos_dst + 1] = 255 - (value - 192) * 4;
+                        data_dst[pos_dst + 2] = 0;
+                    }
+                }
+            }
         }
     }
     return 1;
@@ -420,8 +622,11 @@ int vc_rgb_to_gray(IVC *src, IVC *dst) {
 
 int main(void) {
     IVC *image;
+    IVC *image2;
 
     image = vc_read_image("../Images/FLIR/flir-01.pgm");
+    image2 = vc_image_new(image->width, image->height, 3, image->levels);
+
     if (image == NULL) {
         printf("ERROR -> vc_read_image():\n\tFile not Found!\n");
         getchar();
@@ -430,10 +635,11 @@ int main(void) {
 
 
     // Functions Here
+    vc_scale_gray_to_rgb(image,image2);
 
-
-    vc_write_image("vc-0001.pgm", image);
+    vc_write_image("vc-0001.pgm", image2);
     vc_image_free(image);
+    vc_image_free(image2);
 
     printf("Press any key to exit... \n");
     getchar();
