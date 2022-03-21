@@ -620,12 +620,101 @@ int vc_scale_gray_to_rgb(IVC *src, IVC *dst) {
     return 1;
 }
 
-int main(void) {
-    IVC *image;
-    IVC *image2;
+int vc_gray_to_binary(IVC *src, IVC *dst, int threshold) {
+    //Imgem que entra na função
+    unsigned char *data_src = (unsigned char *) src->data;
+    int bytesperline_src = src->width * src->channels;
+    int channels_src = src->channels;
+    int width = src->width;
+    int height = src->height;
 
-    image = vc_read_image("../Images/FLIR/flir-01.pgm");
-    image2 = vc_image_new(image->width, image->height, 3, image->levels);
+    //Imagem que sai da função
+    unsigned char *data_dst = (unsigned char *) dst->data;
+    int bytesperline_dst = dst->width * dst->channels;
+    int channels_dst = dst->channels;
+
+    int x, y;
+    long int pos_src, pos_dst;
+
+    //verifica se a imagem e valida
+    if ((src->width <= 0) || (src->height <= 0) || (src->data == NULL)) return 0;
+    //verifica tamanho da imagem
+    if ((src->width != dst->width) || (src->height != dst->height)) return 0;
+    //verifica os canais
+    if ((src->channels != 1) || (dst->channels != 1)) return 0;
+
+    for (y = 0; y < height; y++) {
+        for (x = 0; x < width; x++) {
+            pos_src = y * bytesperline_src + x * channels_src;
+            pos_dst = y * bytesperline_dst + x * channels_dst;
+
+            int value = data_src[pos_src];
+
+            if (value > threshold) {
+                data_dst[pos_dst] = 255;
+            } else {
+                data_dst[pos_dst] = 0;
+            }
+        }
+    }
+    return 1;
+}
+
+int vc_gray_to_binary_global_mean(IVC *src, IVC *dst) {
+    //Imgem que entra na função
+    unsigned char *data_src = (unsigned char *) src->data;
+    int bytesperline_src = src->width * src->channels;
+    int channels_src = src->channels;
+    int width = src->width;
+    int height = src->height;
+
+    //Imagem que sai da função
+    unsigned char *data_dst = (unsigned char *) dst->data;
+    int bytesperline_dst = dst->width * dst->channels;
+    int channels_dst = dst->channels;
+
+    int x, y;
+    long int pos_src, pos_dst;
+
+    //verifica se a imagem e valida
+    if ((src->width <= 0) || (src->height <= 0) || (src->data == NULL)) return 0;
+    //verifica tamanho da imagem
+    if ((src->width != dst->width) || (src->height != dst->height)) return 0;
+    //verifica os canais
+    if ((src->channels != 1) || (dst->channels != 1)) return 0;
+
+    float threshold = 0;
+    for (y = 0; y < height; y++) {
+        for (x = 0; x < width; x++) {
+            pos_src = y * bytesperline_src + x * channels_src;
+            threshold += (float) data_src[pos_src];
+        }
+    }
+    threshold = threshold / (float)(height*width);
+
+    for (y = 0; y < height; y++) {
+        for (x = 0; x < width; x++) {
+
+            pos_src = y * bytesperline_src + x * channels_src;
+            pos_dst = y * bytesperline_dst + x * channels_dst;
+
+            int value = data_src[pos_src];
+
+            if (value > threshold) {
+                data_dst[pos_dst] = 255;
+            } else {
+                data_dst[pos_dst] = 0;
+            }
+        }
+    }
+    return 1;
+}
+
+int main(void) {
+    IVC *image, *image2;
+
+    image = vc_read_image("../Images/segmentation/coins.pgm");
+    image2 = vc_image_new(image->width, image->height, 1, image->levels);
 
     if (image == NULL) {
         printf("ERROR -> vc_read_image():\n\tFile not Found!\n");
@@ -635,7 +724,7 @@ int main(void) {
 
 
     // Functions Here
-    vc_scale_gray_to_rgb(image,image2);
+    vc_gray_to_binary_global_mean(image, image2);
 
     vc_write_image("vc-0001.pgm", image2);
     vc_image_free(image);
